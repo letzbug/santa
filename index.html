@@ -201,8 +201,8 @@ body.awake #dock{opacity:1;transform:none;pointer-events:auto}
 label.in{display:flex;flex-direction:column;gap:6px;font-size:.95rem;color:var(--ink-2)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid2[hidden]{display:none}
-input[type=text],input[type=time],input[type=number],select{width:100%;background:#12070e;border:1px solid var(--line);border-radius:10px;padding:.6em .75em;color:var(--ink);font-size:1rem}
-input[type=text]:focus,input[type=time]:focus,select:focus{border-color:var(--brass);outline:none;box-shadow:0 0 0 3px rgba(214,165,74,.2)}
+input[type=text],input[type=password],input[type=time],input[type=number],select{width:100%;background:#12070e;border:1px solid var(--line);border-radius:10px;padding:.6em .75em;color:var(--ink);font-size:1rem}
+input[type=text]:focus,input[type=password]:focus,input[type=time]:focus,select:focus{border-color:var(--brass);outline:none;box-shadow:0 0 0 3px rgba(214,165,74,.2)}
 input[type=range]{width:100%;accent-color:var(--brass)}
 .check{display:flex;align-items:center;gap:.6em;font-size:.98rem;color:var(--ink-2);margin-top:8px;cursor:pointer}
 .check input{width:18px;height:18px;accent-color:var(--brass)}
@@ -226,6 +226,11 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
 .keycap{display:inline-block;min-width:2.4em;padding:.3em .7em;border-radius:8px;background:#12070e;border:1px solid var(--line);box-shadow:inset 0 -2px 0 rgba(0,0,0,.4);font-weight:700;text-align:center;color:var(--brass-hi)}
 .keyline{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.zig{display:flex;align-items:flex-start;gap:.6em;margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:var(--panel-3);line-height:1.45;font-size:.98rem}
+.zig::before{content:"";width:9px;height:9px;margin-top:.45em;border-radius:50%;flex:none;background:var(--zdot,#9c857c);box-shadow:0 0 10px var(--zdot,#9c857c)}
+details.more{margin-top:10px;color:var(--ink-2)}
+details.more summary{cursor:pointer;font-size:.95rem;padding:4px 0}
+details.more .grid2{margin-top:10px}
 .empty{padding:18px;border:1px dashed var(--line);border-radius:14px;color:var(--ink-3);text-align:center;line-height:1.5}
 
 @media (max-width:520px){#dock .btn span{display:none}}
@@ -404,8 +409,24 @@ input[type=range]{width:100%;accent-color:var(--brass)}
     </section>
 
     <section>
-      <h3>Auslöser</h3>
-      <p class="hint">Die Seite reagiert auf eine Taste. Ein Türkontakt, der sich als USB-Tastatur ausgibt (z.&nbsp;B. ein ESP32-S3), kann die Spieluhr damit direkt auslösen. Das Ereignis <code>door-open</code> funktioniert weiterhin.</p>
+      <h3>Türsensor</h3>
+      <p class="hint">Der Zigbee-Türkontakt meldet sich über Zigbee2MQTT und Mosquitto auf dem Mac. Die Spieluhr hört direkt mit. Wie du beides einrichtest, steht im README.</p>
+      <label class="check"><input type="checkbox" data-g="mqttEnabled"> Zigbee-Türsensor verwenden</label>
+      <div class="zig" id="zigState" role="status">Aus</div>
+      <div class="field"><label class="in">WebSocket-Adresse von Mosquitto<input type="text" data-g="mqttUrl" spellcheck="false" placeholder="ws://127.0.0.1:9001"></label></div>
+      <div class="field"><label class="in">Topic des Türsensors<input type="text" data-g="mqttTopic" spellcheck="false" placeholder="zigbee2mqtt/Tuer"></label></div>
+      <div class="btnrow">
+        <button class="btn small" type="button" id="learnBtn">Sensor erkennen</button>
+        <button class="btn small ghost" type="button" id="reconnBtn">Neu verbinden</button>
+      </div>
+      <details class="more"><summary>Anmeldung bei Mosquitto (nur falls eingerichtet)</summary>
+        <div class="grid2"><label class="in">Benutzer<input type="text" data-g="mqttUser" spellcheck="false" autocomplete="off"></label><label class="in">Passwort<input type="password" data-g="mqttPass" autocomplete="off"></label></div>
+      </details>
+    </section>
+
+    <section>
+      <h3>Testen</h3>
+      <p class="hint">Die Taste löst die Spieluhr ohne Sensor aus, praktisch zum Ausprobieren. Für eigene Bridges gibt es außerdem das Ereignis <code>door-open</code>.</p>
       <div class="keyline"><span>Taste für die Türöffnung</span><span class="keycap" id="keyCap">F9</span><button class="btn small ghost" type="button" id="keyBtn">Taste ändern</button></div>
       <div class="btnrow" style="margin-top:14px"><button class="btn small" type="button" id="testBtn2">Türöffnung testen</button></div>
     </section>
@@ -455,6 +476,7 @@ const DEFAULTS = () => ({
   headline: "Frohe Weihnachten", greeting: "Schön, dass Sie da sind.",
   activeFrom: "07:00", activeTo: "17:00", order: "sequence", cooldown: 20, duringPlay: "continue",
   fadeIn: 1.5, fadeOut: 3, volume: 70, defaultLength: 60, triggerKey: "F9", showStatus: true,
+  mqttEnabled: true, mqttUrl: "ws://127.0.0.1:9001", mqttTopic: "zigbee2mqtt/Tuer", mqttUser: "", mqttPass: "",
   songs: [
     mkSong({ title: "Weihnachtsmorgen", url: "music/a.mp3", useWindow: true, from: "07:00", to: "09:00" }),
     mkSong({ title: "Festliche Freude", url: "music/b.mp3", useWindow: true, from: "09:00", to: "11:00" }),
@@ -1131,6 +1153,8 @@ function refreshStatus() {
   if (R.flash && Date.now() < R.flash.until) { text = R.flash.text; dot = R.flash.kind === "bad" ? "#ff7a86" : "#f0c66a"; }
   else if (R.current) { text = ""; }
   else if (!S.songs.some(x => x.enabled && hasSource(x))) { text = "Noch keine Lieder eingetragen"; dot = "#ff7a86"; }
+  else if (S.mqttEnabled && Zig.downSince && Date.now() - Zig.downSince > 20000) { text = "Keine Verbindung zum Türsensor"; dot = "#ff7a86"; }
+  else if (S.mqttEnabled && Zig.battery != null && Zig.battery < 15) { text = `Batterie des Türsensors fast leer (${Zig.battery} %)`; dot = "#f0c66a"; }
   else if (R.sleeping) { text = `Die Spieluhr ruht bis ${S.activeFrom} Uhr`; dot = "#8aa3ff"; }
   else if (Date.now() < R.cooldownUntil) { text = `Gleich wieder bereit (${Math.ceil((R.cooldownUntil - Date.now()) / 1000)} s)`; dot = "#f0c66a"; }
   else text = "Bereit für den nächsten Gast";
@@ -1166,6 +1190,116 @@ function frame(now) {
   drawBokeh(t, k); drawGlobeSnow(t, k); drawFx(t, k, dt);
   updateSleigh(now, k); updateGarland(t, now); updateSanta(now, t); updatePlaque();
   requestAnimationFrame(frame);
+}
+
+/* =========================================================
+   Zigbee door sensor via Zigbee2MQTT -> Mosquitto (MQTT over WebSocket)
+   Tiny MQTT 3.1.1 client, no external library, so it keeps working offline.
+   ========================================================= */
+const Zig = { ws: null, state: "off", msg: "", downSince: Date.now(), retry: 0, timer: 0, ping: 0, buf: new Uint8Array(0), pid: 1,
+  last: {}, lastSeen: 0, battery: null, learning: false, learnT: 0, quietUntil: 0, nextTry: 0 };
+const te = new TextEncoder(), td = new TextDecoder();
+const mStr = v => { const b = te.encode(v); return [b.length >> 8, b.length & 255, ...b]; };
+const mLen = n => { const o = []; do { let d = n % 128; n = Math.floor(n / 128); if (n > 0) d |= 128; o.push(d); } while (n > 0); return o; };
+const mPkt = (h, body) => new Uint8Array([h, ...mLen(body.length), ...body]);
+const mConnect = () => { let flags = 0x02; const pl = [...mStr("doormagic-" + Math.random().toString(16).slice(2, 10))];
+  if (S.mqttUser) { flags |= 0x80; pl.push(...mStr(S.mqttUser)); if (S.mqttPass) { flags |= 0x40; pl.push(...mStr(S.mqttPass)); } }
+  return mPkt(0x10, [...mStr("MQTT"), 4, flags, 0, 30, ...pl]); };
+const mSubscribe = topics => { const id = (Zig.pid++ % 65535) + 1; const body = [id >> 8, id & 255];
+  topics.forEach(t => body.push(...mStr(t), 0)); return mPkt(0x82, body); };
+function setZig(state, msg = "") { if (state === "connected") Zig.downSince = 0; else if (!Zig.downSince) Zig.downSince = Date.now(); Zig.state = state; Zig.msg = msg; paintZig(); refreshStatus(); }
+function mqttClose() {
+  clearInterval(Zig.ping); clearTimeout(Zig.timer);
+  const ws = Zig.ws; Zig.ws = null; Zig.buf = new Uint8Array(0);
+  if (ws) { ws.onclose = ws.onmessage = ws.onerror = ws.onopen = null; try { ws.close(); } catch (e) {} }
+}
+function mqttConnect() {
+  mqttClose();
+  if (!S.mqttEnabled) { setZig("off"); return; }
+  const url = (S.mqttUrl || "").trim();
+  if (!/^wss?:\/\//i.test(url)) { setZig("error", "Die Adresse muss mit ws:// oder wss:// beginnen, z. B. ws://127.0.0.1:9001"); return; }
+  let ws;
+  try { ws = new WebSocket(url, ["mqtt"]); }
+  catch (e) { setZig("error", location.protocol === "https:" && url.startsWith("ws://")
+      ? "Von einer https-Seite aus erlaubt der Browser nur ws://127.0.0.1 oder ws://localhost. Für andere Rechner braucht es wss://."
+      : "Diese Adresse lässt sich nicht öffnen. Prüfe die Schreibweise."); return; }
+  ws.binaryType = "arraybuffer"; Zig.ws = ws; setZig("connecting");
+  ws.onopen = () => ws.send(mConnect());
+  ws.onmessage = e => { if (typeof e.data !== "string") mqttBytes(new Uint8Array(e.data)); };
+  ws.onclose = () => { if (Zig.ws !== ws) return; Zig.ws = null; clearInterval(Zig.ping);
+    const wait = Math.min(30000, 1000 * 2 ** Zig.retry++); Zig.nextTry = Date.now() + wait;
+    if (Zig.state !== "error") setZig("retry"); Zig.timer = setTimeout(mqttConnect, wait); };
+}
+function mqttBytes(chunk) {
+  const b = new Uint8Array(Zig.buf.length + chunk.length); b.set(Zig.buf); b.set(chunk, Zig.buf.length);
+  let i = 0;
+  for (;;) {
+    if (b.length - i < 2) break;
+    let j = i + 1, len = 0, mul = 1, byte = 0, ok = true;
+    do { if (j >= b.length) { ok = false; break; } byte = b[j++]; len += (byte & 127) * mul; mul *= 128; } while (byte & 128);
+    if (!ok || j + len > b.length) break;
+    mqttPacket(b[i], b.subarray(j, j + len)); i = j + len;
+  }
+  Zig.buf = b.slice(i);
+}
+function mqttPacket(h, body) {
+  const type = h >> 4, ws = Zig.ws; if (!ws) return;
+  if (type === 2) {
+    if (body[1] === 0) {
+      Zig.retry = 0; setZig("connected");
+      const base = (S.mqttTopic || "zigbee2mqtt/x").split("/")[0] || "zigbee2mqtt";
+      const topics = Zig.learning ? ["#"] : [S.mqttTopic, base + "/bridge/state"].filter(Boolean);
+      ws.send(mSubscribe(topics));
+      Zig.quietUntil = Date.now() + 1500;
+      Zig.ping = setInterval(() => { try { ws.readyState === 1 && ws.send(new Uint8Array([0xC0, 0])); } catch (e) {} }, 20000);
+    } else {
+      setZig("error", body[1] === 4 || body[1] === 5 ? "Mosquitto lehnt die Anmeldung ab. Prüfe Benutzer und Passwort." : "Mosquitto hat die Verbindung abgelehnt.");
+      try { ws.close(); } catch (e) {}
+    }
+  } else if (type === 3) {
+    const qos = (h >> 1) & 3, retained = !!(h & 1), tl = (body[0] << 8) | body[1];
+    const topic = td.decode(body.subarray(2, 2 + tl)); let p = 2 + tl; if (qos > 0) p += 2;
+    mqttMessage(topic, td.decode(body.subarray(p)), retained);
+  }
+}
+function mqttMessage(topic, payload, retained) {
+  if (/\/bridge\/state$/.test(topic)) {   // Zigbee2MQTT (re)started: ignore its burst of cached states
+    if (/online/.test(payload)) Zig.quietUntil = Date.now() + 10000;
+    return;
+  }
+  let d; try { d = JSON.parse(payload); } catch (e) { return; }
+  if (!d || typeof d !== "object" || typeof d.contact !== "boolean") return;
+  if (Zig.learning) {
+    if (d.contact !== false || retained) return;
+    Zig.learning = false; clearTimeout(Zig.learnT);
+    S.mqttTopic = topic; save(); const inp = $('[data-g="mqttTopic"]'); if (inp) inp.value = topic;
+    flash(`Türsensor erkannt: ${topic}`); Zig.last[topic] = false; mqttConnect(); return;
+  }
+  if (topic !== S.mqttTopic) return;
+  const prev = Zig.last[topic]; Zig.last[topic] = d.contact; Zig.lastSeen = Date.now();
+  if (typeof d.battery === "number") Zig.battery = Math.round(d.battery);
+  paintZig();
+  if (d.contact === false && prev !== false && !retained && Date.now() > Zig.quietUntil) doorOpen();
+}
+function relTime(t) { const s = Math.round((Date.now() - t) / 1000);
+  if (s < 10) return "gerade eben"; if (s < 60) return `vor ${s} s`; const m = Math.round(s / 60); if (m < 60) return `vor ${m} min`;
+  const h = Math.round(m / 60); return h < 48 ? `vor ${h} h` : `vor ${Math.round(h / 24)} Tagen`; }
+function paintZig() {
+  const el = $("#zigState"); if (!el) return;
+  let text, dot;
+  if (Zig.learning && Zig.state === "connected") { text = "Öffne jetzt einmal die Tür. Der erste Türkontakt, der „offen“ meldet, wird übernommen."; dot = "#f0c66a"; }
+  else switch (Zig.state) {
+    case "off": text = "Aus. Die Spieluhr reagiert nur auf die Testtaste."; dot = "#9c857c"; break;
+    case "connecting": text = "Verbinde mit Mosquitto …"; dot = "#f0c66a"; break;
+    case "retry": text = `Keine Verbindung zu ${S.mqttUrl}. Läuft Mosquitto mit WebSocket-Listener? Neuer Versuch in ${Math.max(1, Math.ceil((Zig.nextTry - Date.now()) / 1000))} s.`; dot = "#ff7a86"; break;
+    case "error": text = Zig.msg; dot = "#ff7a86"; break;
+    default:
+      dot = "#7fd6a0";
+      if (!Zig.lastSeen) text = `Verbunden. Warte auf das erste Signal von ${S.mqttTopic}.`;
+      else { const st = Zig.last[S.mqttTopic] === false ? "Tür offen" : "Tür zu";
+        text = `Verbunden. ${st}, letztes Signal ${relTime(Zig.lastSeen)}${Zig.battery != null ? `, Batterie ${Zig.battery} %` : ""}.`; }
+  }
+  el.textContent = text; el.style.setProperty("--zdot", dot);
 }
 
 /* =========================================================
@@ -1329,6 +1463,7 @@ function bindDrawer() {
       if (k === "headline" || k === "greeting") applyTexts();
       save(); refreshStatus();
     });
+    if (k.startsWith("mqtt")) el.addEventListener("change", () => { save(); Zig.retry = 0; mqttConnect(); });
   });
   $$("[data-gseg]").forEach(seg => { const k = seg.dataset.gseg;
     const paint = () => $$("button", seg).forEach(b => b.classList.toggle("on", b.dataset.v === S[k])); paint();
@@ -1341,6 +1476,14 @@ function bindDrawer() {
   R.onKeyCaptured = code => { S.triggerKey = code; save(); paintKey(); $("#keyBtn").textContent = "Taste ändern"; };
 
   $("#testBtn2").onclick = () => doorOpen();
+  $("#reconnBtn").onclick = () => { Zig.retry = 0; mqttConnect(); };
+  $("#learnBtn").onclick = () => {
+    if (!S.mqttEnabled) { S.mqttEnabled = true; $('[data-g="mqttEnabled"]').checked = true; save(); }
+    Zig.learning = true; clearTimeout(Zig.learnT);
+    Zig.learnT = setTimeout(() => { if (Zig.learning) { Zig.learning = false; paintZig(); mqttConnect(); } }, 90000);
+    Zig.retry = 0; mqttConnect(); paintZig();
+  };
+  setInterval(paintZig, 5000);
   const rb = $("#resetBtn");
   rb.onclick = async () => {
     if (!rb.classList.contains("armed")) { rb.classList.add("armed"); rb.textContent = "Ja, alles löschen"; setTimeout(() => { rb.classList.remove("armed"); rb.textContent = "Alles zurücksetzen"; }, 4000); return; }
@@ -1401,6 +1544,7 @@ refreshStatus();
 requestAnimationFrame(frame);
 // Kiosk browsers with autoplay allowed can skip the click.
 ensureCtx().then(ctx => { if (ctx && ctx.state === "running") unlock(false); }).catch(() => {});
+mqttConnect();
 // Gentle idle moment: a small flurry every now and then.
 setInterval(() => { if (!R.current && !document.hidden && !reduced) shakeGlobe(.18); }, 45000);
 })();

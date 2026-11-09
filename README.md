@@ -34,13 +34,96 @@ Bitte nur Musik verwenden, für die eine Lizenz zur öffentlichen Wiedergabe bes
 - Geht die Tür während eines Lieds auf, läuft es standardmäßig weiter, und nur der Weihnachtsmann winkt. Alternativ startet ein neues Lied.
 - Außerhalb der Aktivzeit schläft der Weihnachtsmann, und es läuft keine Musik.
 
-## Türsensor anschließen
+## Türsensor: SONOFF SNZB-04P über ZBDongle-P
 
-Die Seite reagiert auf drei Arten:
+So kommt das Signal an:
 
-1. **Taste (empfohlen):** Standard ist `F9`, änderbar unter „Auslöser“. Ein Türkontakt, der sich per USB als Tastatur ausgibt (z. B. ein ESP32-S3 mit USB-HID-Firmware), drückt beim Öffnen einfach diese Taste. Damit braucht es keine zusätzliche Bridge-Software.
-2. **Ereignis:** `window.dispatchEvent(new Event('door-open'))`
-3. **Funktion:** `window.doorOpen()`
+```
+SNZB-04P  →  Zigbee  →  ZBDongle-P am Mac  →  Zigbee2MQTT  →  Mosquitto  →  Spieluhr im Browser
+```
+
+Die Spieluhr verbindet sich selbst per WebSocket mit Mosquitto (eingebauter MQTT-Client, keine externe Bibliothek). Sie startet, wenn der Sensor von „zu“ auf „offen“ wechselt. Wiederholte Meldungen, Batterieberichte und der Neustart von Zigbee2MQTT lösen nichts aus.
+
+Der Zigbee-Stick braucht Software auf dem Mac, das geht nicht rein im Browser. Docker scheidet auf dem Mac aus, weil Docker Desktop keine USB-Sticks durchreicht. Also nativ installieren:
+
+### 1. Mosquitto (MQTT-Broker)
+
+```
+brew install mosquitto
+```
+
+In `$(brew --prefix)/etc/mosquitto/mosquitto.conf` am Ende ergänzen:
+
+```
+listener 1883 127.0.0.1
+listener 9001 127.0.0.1
+protocol websockets
+allow_anonymous true
+```
+
+Beide Listener hören nur auf dem Mac selbst, von außen ist nichts erreichbar. Dann starten (startet ab jetzt automatisch mit):
+
+```
+brew services start mosquitto
+```
+
+### 2. Zigbee2MQTT
+
+Node.js 22 installieren und Zigbee2MQTT holen:
+
+```
+brew install node@22
+echo 'export PATH="$(brew --prefix node@22)/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+corepack enable
+git clone --depth 1 https://github.com/Koenkk/zigbee2mqtt.git ~/zigbee2mqtt
+cd ~/zigbee2mqtt
+pnpm install --frozen-lockfile
+```
+
+Den Stick einstecken und seinen Anschluss suchen: `ls /dev/cu.*` (Eintrag mit `usbserial` oder `SLAB` im Namen).
+
+Datei `~/zigbee2mqtt/data/configuration.yaml` anlegen:
+
+```yaml
+mqtt:
+  server: mqtt://127.0.0.1:1883
+serial:
+  port: /dev/cu.usbserial-XXXX   # dein Anschluss von oben
+  adapter: zstack                # ZBDongle-P
+frontend:
+  enabled: true
+  port: 8080
+advanced:
+  network_key: GENERATE
+  pan_id: GENERATE
+```
+
+Starten mit `pnpm start`, dann im Browser `http://127.0.0.1:8080` öffnen.
+
+### 3. Sensor koppeln
+
+In der Zigbee2MQTT-Oberfläche Anlernen erlauben („Permit join“), dann am SNZB-04P die Taste etwa 5 Sekunden halten, bis die LED blinkt. Das Gerät danach am besten in `Tuer` umbenennen.
+
+### 4. Spieluhr verbinden
+
+In der Spieluhr unter **Einstellungen → Türsensor** auf **Sensor erkennen** klicken und die Tür einmal öffnen. Fertig. Die Statusanzeige zeigt danach Verbindung, Türzustand, letztes Signal und Batteriestand. Bricht die Verbindung ab oder wird die Batterie schwach, steht das unten links in der Statuszeile.
+
+Chrome fragt beim ersten Verbinden womöglich, ob die Seite auf Geräte im lokalen Netzwerk zugreifen darf. Einmal erlauben, am besten bevor du den Kiosk-Modus startest. Safari blockiert die Verbindung von einer https-Seite zu `ws://127.0.0.1`, deshalb Chrome verwenden.
+
+### 5. Zigbee2MQTT automatisch starten
+
+```
+npm install -g pm2
+pm2 start "pnpm start" --name zigbee2mqtt --cwd ~/zigbee2mqtt
+pm2 save
+pm2 startup
+```
+
+`pm2 startup` gibt einen Befehl aus, den du einmal mit `sudo` ausführst.
+
+### Zum Testen ohne Sensor
+
+Taste `F9` (änderbar), `window.dispatchEvent(new Event('door-open'))` oder `window.doorOpen()`.
 
 ## Dauerbetrieb auf dem Mac mini
 
